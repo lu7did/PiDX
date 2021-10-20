@@ -7,7 +7,7 @@
  * Project at http://www.github.com/lu7did/PiDX
  *---------------------------------------------------------------------
  *
- * Created by Pedro E. Colla (lu7dz@gmail.com)
+ * Created by Dr. Pedro E. Colla (lu7did@gmail.com)
  * Code excerpts from several packages:
  *    Adafruit's python code for CharLCDPlate
  *    tune.cpp from rpitx package by Evariste Courjaud F5OEO
@@ -16,12 +16,12 @@
  *    iambic-keyer (https://github.com/n1gp/iambic-keyer)
  *    log.c logging facility by  rxi https://github.com/rxi/log.c
  *    minIni configuration management package by Compuphase https://github.com/compuphase/minIni/tree/master/dev
- *    tinyalsa https://github.com/tinyalsa/tinyalsa
  * Also libraries
  *    librpitx by  Evariste Courjaud (F5EOE)
- *    libcsdr by Karol Simonyi (HA7ILM) https://github.com/compuphase/minIni/tree/master/dev
- * Ideas
+ *    TinyALSA sound card library
+* Ideas
  *    Hans Summers (G0UPL) QDX transceiver User Manual
+ *    Adam Rong (BD6CR), D4D transceiver
  * ---------------------------------------------------------------------
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -37,9 +37,14 @@
  * MA 02110-1301, USA.
  */
 
-#include <unistd.h>
-#include "/home/pi/librpitx/src/librpitx.h"
+/* Firmware configuration */
+#define DEBUG 0
+
+
+/*--- Standard libraries ---*/
+
 #include "stdio.h"
+#include <unistd.h>
 #include <cstring>
 #include <signal.h>
 #include <stdlib.h>
@@ -57,38 +62,47 @@
 #include <pthread.h>
 #include <signal.h>
 #include <semaphore.h>
-#include <pigpio.h>
-#include <wiringPiI2C.h>
 #include <unistd.h>
-#include "/home/pi/librpitx/src/librpitx.h"
 #include <cstring>
 #include <iostream>
 #include <chrono>
 #include <thread>
+
+/*--- Specific libraries ---*/
+
+#include "/home/pi/librpitx/src/librpitx.h"
+#include "/home/pi/librpitx/src/librpitx.h"
+
+/*--- General purpose definitions ---*/
+
+#define PTT_ON 1
+#define PTT_OFF 0
+typedef unsigned char byte;
+typedef bool boolean;
+
+#define RUN 0b00000001
+
 //==*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=
-//
+//                         FIRMWARE CONFIGURATION
 //==*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=
 #define GPIO04 4
 #define GPIO12 12
-#define PTT_ON 1
-#define PTT_OFF 0
 
 //==*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=
-//
+//                         FIRMWARE IDENTIFICATION
 //==*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=*=
 const char   *PROGRAMID="PiDX";
 const char   *PROG_VERSION="1.0";
 const char   *PROG_BUILD="00";
-const char   *COPYRIGHT="(c) LU7DID 2019,2020";
-
-typedef unsigned char byte;
-typedef bool boolean;
+const char   *COPYRIGHT="(c) LU7DID,LU7DZ 2019,2020";
 
 //--------------------------------------------------------------------------------------------------
 // PiDX
 //--------------------------------------------------------------------------------------------------
 
 byte MSW=0;
+int  TVOX=0;
+
 iqdmasync *iqtest=NULL;
 
 //--------------------------[System Word Handler]---------------------------------------------------
@@ -100,7 +114,7 @@ bool getWord (unsigned char SysWord, unsigned char v) {
 
 }
 //--------------------------------------------------------------------------------------------------
-// setSSW Sets a given bit of the system status Word (SSW)
+// setWord Sets a given bit of a status word 
 //--------------------------------------------------------------------------------------------------
 void setWord(unsigned char* SysWord,unsigned char v, bool val) {
 
@@ -110,23 +124,23 @@ void setWord(unsigned char* SysWord,unsigned char v, bool val) {
   }
 
 }
-#ifdef Pi4D
+
+
 
 //--------------------------------------------------------------------------------------------------
 // timer_exec 
-// timer management
+// timer management controller
 //--------------------------------------------------------------------------------------------------
 void timer_exec()
 {
 
-  if (Tvox!=0) {
-     Tvox--;
-     if(Tvox==0) {
-       //gpioWrite(GPIO12,PTT_OFF);
-       iqtest->stop();
-       delete(iqtest);
-       iqtest=NULL;
-       setWord(&MSW,VOX,false);
+  if (TVOX!=0) {
+     TVOX--;
+     if(TVOX==0) {
+       //iqtest->stop();
+       //delete(iqtest);
+       //iqtest=NULL;
+       //setWord(&MSW,VOX,false);
        printf("VOX turned off\n");
      }
   }
@@ -148,10 +162,6 @@ void timer_start(std::function<void(void)> func, unsigned int interval)
   }).detach();
 }
 
-void SimpleTestFileIQ(uint64_t Freq)
-{
-	
-}
 
 //---------------------------------------------------------------------------------
 // Print usage
@@ -171,6 +181,15 @@ Usage: [-i File Input][-s Samplerate][-l] [-f Frequency] [-h Harmonic number] \n
 
 
 } /* end function print_usage */
+
+#ifdef Pi4D
+
+
+void SimpleTestFileIQ(uint64_t Freq)
+{
+	
+}
+
 //---------------------------------------------------------------------------
 // Capture and manage SIG
 //---------------------------------------------------------------------------
@@ -188,23 +207,17 @@ static void terminate(int num)
 int main(int argc, char* argv[])
 {
 
-#ifdef Pi4D
+/*--- Define master timer ---*/
 
+        timer_start(timer_exec,100);
 	int a;
 	int anyargs = 1;
-	float SetFrequency=7074000;
-	float SampleRate=12000;
-	char* FileName=NULL;
-	int Harmonic=1;
-	enum {typeiq_i16,typeiq_u8,typeiq_float,typeiq_double};
-	int InputType=typeiq_i16;
-	int Decimation=1;
-        timer_start(timer_exec,100);
 
+/*--- Process arguments ---*/
 
 	while(1)
 	{
-		a = getopt(argc, argv, "i:f:s:h:lt:");
+		a = getopt(argc, argv, "h:");
 	
 		if(a == -1) 
 		{
@@ -216,13 +229,15 @@ int main(int argc, char* argv[])
 		switch(a)
 		{
 		case 'i': // File name
-			FileName = optarg;
+			//FileName = optarg;
 			break;
 		case 'f': // Frequency
-			SetFrequency = atof(optarg);
+			//SetFrequency = atof(optarg);
 			break;
 		case 's': // SampleRate (Only needeed in IQ mode)
-			SampleRate = atoi(optarg);
+			//SampleRate = atoi(optarg);
+
+#ifdef Pi4D
 			if(SampleRate>MAX_SAMPLERATE) 
 			{
 				for(int i=2;i<12;i++) //Max 10 times samplerate
@@ -245,31 +260,24 @@ int main(int argc, char* argv[])
 				}
 			};
 			break;
+#endif 
+
 		case 'h': // help
-			Harmonic=atoi(optarg);
+			//Harmonic=atoi(optarg);
 			break;
 		case 'l': // loop mode
 			//loop_mode_flag = true;
 			break;
 		case 't': // inout type
-			if(strcmp(optarg,"i16")==0) InputType=typeiq_i16;
-			if(strcmp(optarg,"u8")==0) InputType=typeiq_u8;
-			if(strcmp(optarg,"float")==0) InputType=typeiq_float;
-			if(strcmp(optarg,"double")==0) InputType=typeiq_double;
+			//if(strcmp(optarg,"i16")==0) InputType=typeiq_i16;
+			//if(strcmp(optarg,"u8")==0) InputType=typeiq_u8;
+			//if(strcmp(optarg,"float")==0) InputType=typeiq_float;
+			//if(strcmp(optarg,"double")==0) InputType=typeiq_double;
 			break;
 		case -1:
         	break;
 		case '?':
-			if (isprint(optopt) )
- 			{
- 				fprintf(stderr, "sendiq: unknown option `-%c'.\n", optopt);
- 			}
-			else
-			{
-				fprintf(stderr, "sendiq: unknown option character `\\x%x'.\n", optopt);
-			}
 			print_usage();
-
 			exit(1);
 			break;
 		default:
@@ -278,6 +286,21 @@ int main(int argc, char* argv[])
 			break;
 		}/* end switch a */
 	}/* end while getopt() */
+
+
+
+
+
+#ifdef Pi4D
+
+	float SetFrequency=7074000;
+	float SampleRate=12000;
+	char* FileName=NULL;
+	int Harmonic=1;
+	enum {typeiq_i16,typeiq_u8,typeiq_float,typeiq_double};
+	int InputType=typeiq_i16;
+	int Decimation=1;
+
 
 	if(FileName==NULL) {fprintf(stderr,"Need an input\n");exit(1);}
 
